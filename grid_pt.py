@@ -9,13 +9,16 @@ abierto, para un numero fijo de hilos de trabajo, conviene mas repartir
 en threads internos o en procesos.
 
 Uso.
-    python grid_pt.py --pmax 8 --B 48 --repeticiones 3
-    python grid_pt.py --pmax 8 --B 48 --repeticiones 3 --version bs_sklearn
+    python grid_pt.py --pmax 16 --B 48 --repeticiones 3
+    python grid_pt.py --pmax 16 --B 48 --repeticiones 3 --version bs_sklearn
 """
 import argparse
 import statistics
 import time
+from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
 from joblib import Parallel, delayed
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import BaggingRegressor
@@ -44,8 +47,11 @@ def medir(version, X, y, seeds, B, p, t, repeticiones):
         if version == "bs_auto":
             bagging = BaggingRegressor(
                 estimator=LinearRegression(fit_intercept=False),
-                n_estimators=B, max_samples=1.0, bootstrap=True,
-                n_jobs=p, random_state=123,
+                n_estimators=B,
+                max_samples=1.0,
+                bootstrap=True,
+                n_jobs=p,
+                random_state=123,
             )
             with threadpool_limits(limits=t):
                 t0 = time.perf_counter()
@@ -59,12 +65,42 @@ def medir(version, X, y, seeds, B, p, t, repeticiones):
     return statistics.median(tiempos)
 
 
+def graficar_heatmap(resultados, pmax, version, outpath):
+    """
+    Crea un heatmap de tiempos. Cada celda corresponde a una combinacion (p,t).
+    """
+    mat = np.full((pmax, pmax), np.nan)
+
+    for p, t, tiempo in resultados:
+        mat[p - 1, t - 1] = tiempo
+
+    plt.figure(figsize=(10, 7))
+    im = plt.imshow(mat, origin="lower", aspect="auto", cmap="viridis")
+    plt.colorbar(im, label="Tiempo (s)")
+
+    plt.xticks(range(pmax), [str(i + 1) for i in range(pmax)])
+    plt.yticks(range(pmax), [str(i + 1) for i in range(pmax)])
+    plt.xlabel("t (threads internos)")
+    plt.ylabel("p (procesos)")
+    plt.title(f"Tiempos de ejecución por combinación (p,t) - {version}")
+
+    # Anotar solo las celdas existentes
+    for p, t, tiempo in resultados:
+        plt.text(t - 1, p - 1, f"{tiempo:.2f}",
+                 ha="center", va="center", color="white", fontsize=8)
+
+    plt.tight_layout()
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Grilla de p y t con p por t menor o igual a p_max")
-    parser.add_argument("--pmax", type=int, default=8, help="p_max, tope para p por t")
+    parser.add_argument("--pmax", type=int, default=16, help="p_max, tope para p por t")
     parser.add_argument("--B", type=int, default=48, help="numero de resamples bootstrap")
     parser.add_argument("--repeticiones", type=int, default=3,
-                         help="repeticiones por combinacion, se usa la mediana")
+                        help="repeticiones por combinacion, se usa la mediana")
     parser.add_argument("--version", default="bs_numpy", choices=["bs_numpy", "bs_sklearn", "bs_auto"])
     args = parser.parse_args()
 
@@ -74,6 +110,7 @@ def main():
 
     print(f"version {args.version}, {len(combos)} combinaciones de p y t con p por t hasta {args.pmax}")
     print(f"{'p':>3} {'t':>3} {'p por t':>8} {'tiempo (s)':>11}")
+
     resultados = []
     for p, t in combos:
         segundos = medir(args.version, X, y, seeds, args.B, p, t, args.repeticiones)
@@ -83,6 +120,9 @@ def main():
     mejor = min(resultados, key=lambda r: r[2])
     print()
     print(f"mejor combinacion, p igual a {mejor[0]}, t igual a {mejor[1]}, tiempo {mejor[2]:.3f} s")
+
+    plots_dir = Path("results/plots")
+    graficar_heatmap(resultados, args.pmax, args.version, plots_dir / "grid_pt.png")
 
 
 if __name__ == "__main__":

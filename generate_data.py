@@ -18,7 +18,7 @@ propios datos, para poder comparar resultados en la parte (c).
 import numpy as np
 
 # ---- Parametros del experimento (fijos por el enunciado) ----
-N = 10_000   # numero de observaciones
+N = 100_000   # numero de observaciones
 k = 300      # numero de variables de entrada
 SEED = 42    # semilla fija para reproducibilidad
 
